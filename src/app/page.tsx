@@ -1,101 +1,160 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Link2, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { isAllowedVideoFile, isValidYouTubeUrl } from "@/lib/validate";
+
+export default function HomePage() {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function startProject(body: FormData | { youtubeUrl: string }) {
+    setSubmitting(true);
+    try {
+      const init =
+        body instanceof FormData
+          ? { method: "POST", body }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            };
+
+      const res = await fetch("/api/projects", init);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to start project");
+      }
+
+      router.push(`/projects/${data.projectId}/processing`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleYouTube(e: React.FormEvent) {
+    e.preventDefault();
+    const url = youtubeUrl.trim();
+    if (!isValidYouTubeUrl(url)) {
+      toast.error("Enter a valid YouTube URL");
+      return;
+    }
+    await startProject({ youtubeUrl: url });
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!isAllowedVideoFile(file)) {
+      toast.error("Upload an MP4 or MOV file");
+      e.target.value = "";
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    await startProject(form);
+    e.target.value = "";
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Short-form clip generator
+        </h1>
+        <p className="mt-2 max-w-xl text-muted-foreground">
+          Paste a YouTube link or upload a video. We transcribe with Whisper,
+          find viral moments with Claude, and render captioned 9:16 clips with
+          FFmpeg.
+        </p>
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Link2 className="h-5 w-5" />
+              YouTube URL
+            </CardTitle>
+            <CardDescription>
+              Downloaded with yt-dlp on your Mac, then processed locally.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleYouTube} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="youtube-url">Video URL</Label>
+                <Input
+                  id="youtube-url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? "Starting…" : "Process YouTube video"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Upload className="h-5 w-5" />
+              Local upload
+            </CardTitle>
+            <CardDescription>MP4 or MOV from your machine.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime,.mp4,.mov"
+              className="hidden"
+              onChange={handleUpload}
+              disabled={submitting}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={submitting}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {submitting ? "Starting…" : "Choose video file"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Files are saved under <code className="text-foreground">/data/projects/</code>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      <p className="text-sm text-muted-foreground">
+        Requires <code className="text-foreground">OPENAI_API_KEY</code> and{" "}
+        <code className="text-foreground">ANTHROPIC_API_KEY</code> in{" "}
+        <code className="text-foreground">.env.local</code>.
+      </p>
     </div>
   );
 }
